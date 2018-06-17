@@ -12,7 +12,6 @@
 #include <string.h>
 
 #define N 10
-#define L 20
 
 typedef struct KOLEJKA Kolejka;
 struct KOLEJKA{
@@ -74,16 +73,28 @@ void FirstIn(int v){
   else start = n; //lista była pusta
 }
 
-pthread_t myThread[N];
+void freeList()
+{
+Kolejka *tmp, *node;
+node = start;
+   while (node != NULL)
+    {
+       tmp = node;
+       node = node->next;
+       free(tmp);
+    }
+    start = NULL;
+
+}
+
+pthread_t *myThread;
 pthread_mutex_t mutex, mAC, mBC, most, mutkolejki;
 
 int nn;
 int ACount = 0, BCount = 0, MACount = 0, MBCount = 0;
-int temp[N];
-int opterr;
+int *temp;
+int opterr = 0;
 int debug = 0;
-//Lista/kolejka samochodów.
-//Mutex kolejki
 
 void *Crossing(void *arg)
 {
@@ -141,7 +152,28 @@ int main (int argc, char *argv[])
         pthread_mutex_init(&mutex, NULL);
         pthread_mutex_init(&mutkolejki, NULL);
         srand(time(NULL)); 
-        for(int i=0; i<N;i++){
+
+        switch(argc){
+            case 2: 
+            if(atoi(argv[1])==0)
+            nn = atoi(argv[1]); 
+            break;
+ 
+            case 3: 
+            nn = atoi(argv[1]); 
+            if(strcmp(argv[2],"-debug")==0)
+                debug=1;;
+            break;
+            default:
+            opterr =1;
+                printf("Blad przy wpisywaniu argumentow\n;"); 
+                
+            break;
+        }
+        if(opterr==0){
+            temp = (int*) malloc(nn*sizeof(int));
+            myThread = (pthread_t*) malloc(nn*sizeof(pthread_t));
+            for(int i=0; i<nn;i++){
             FirstIn(i);
             int r = rand()%100;
             if(r<55){ 
@@ -152,29 +184,16 @@ int main (int argc, char *argv[])
                 temp[i]=1;
                 BCount++;
             }
-        }
-        printf(" %d \n", argc);
-        switch(argc){
-            case 2: 
-            nn = atoi(argv[1]); 
-            break;
- 
-            case 3: 
-            nn = atoi(argv[1]); 
-            if(strcmp(argv[2],"-debug")==0)
-                debug=1;;
-            break;
-            default:
-                printf("Blad przy wpisywaniu argumentow\n;"); 
-        }
-
-        for(long i=0; i < N; i++)
-                pthread_create(&myThread[i], NULL, Crossing, (void *)i);
+            }
+            
+            for(long i=0; i < nn; i++)
+            pthread_create(&myThread[i], NULL, Crossing, (void *)i);
 
         while(1);
 
-        /* Results and cleanup */
+        freeList(&start);
+        }
         pthread_mutex_destroy(&mutkolejki);
         pthread_mutex_destroy(&mutex); 
         pthread_exit(NULL);
-}
+}push u 
