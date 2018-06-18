@@ -8,19 +8,28 @@
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <fcntl.h>
-#include <semaphore.h>
 #include <string.h>
+#include <signal.h>
+#include <errno.h>
 
-#define N 10
+volatile sig_atomic_t exitflag = 0;
+void sig_handler(int signo)
+{
+  if (signo == SIGINT)
+    exitflag=1;
+}
 
 typedef struct KOLEJKA Kolejka;
 struct KOLEJKA{
-	int* numer;
+	int* numer;     //Numer naszego samochodu w kolejce
 	Kolejka* next;
+        int* stan;
 };     
 
+//Utworzenie kolejki
 Kolejka * start = NULL;
 
+//Zliczenie zawartości listy
 unsigned Ile(){ 
   Kolejka * p;
   unsigned c = 0; // zerujemy licznik
@@ -33,6 +42,7 @@ unsigned Ile(){
   return c;
 }
 
+//usunięcie pierwszego elementu z listy
 void FirstOut(){
   Kolejka *p;
   p = start;   
@@ -43,6 +53,7 @@ void FirstOut(){
   }
 }
 
+//Wypisanie zawartości kolejki
 void Wypisz(){
     Kolejka * p;
     p =start;
@@ -58,7 +69,7 @@ void Wypisz(){
     else printf("\n")
 ;}
 
-
+//Wstawianie nowego elementu na koniec listy
 void FirstIn(int v){
   Kolejka * p, * n;
   n = malloc(sizeof(*p));  // tworzymy nowy element
@@ -73,53 +84,50 @@ void FirstIn(int v){
   else start = n; //lista była pusta
 }
 
+//kasowanie listy
 void freeList()
 {
-Kolejka *tmp, *node;
-node = start;
-   while (node != NULL)
-    {
-       tmp = node;
-       node = node->next;
-       free(tmp);
-    }
-    start = NULL;
+        Kolejka *tmp, *node;
+        node = start;
+        while (node != NULL)
+        {
+        tmp = node;
+        node = node->next;
+        free(tmp);
+        }
+        start = NULL;
 
 }
 
 pthread_t *myThread;
-pthread_mutex_t mutex, mAC, mBC, most, mutkolejki;
-pthread_cond_t zmienna = PTHREAD_COND_INITIALIZER;
-pthread_cond_t zmiennakolejki = PTHREAD_COND_INITIALIZER;
-int nn;
-int ACount = 0, BCount = 0, MACount = 0, MBCount = 0;
+pthread_mutex_t most, mutexkolejki,mutexkolejkiOut;     //Deklaracja mutexów
+pthread_cond_t zmienna = PTHREAD_COND_INITIALIZER;      //Deklaracja oraz inicjacja zmiennej warunkowej
+int nn; //Licznik wątków / samochodów
+int ACount = 0, BCount = 0, MACount = 0, MBCount = 0;   //Liczniki kolejek i miast
 int *temp;
-int opterr = 0;
-int debug = 0;
-int zajeta = 0;
+int opterr = 0; //Kontrola błędów w argumentach
+int debug = 0;  //Flaga argumentu -debug.
 
 void *Crossing(void *arg)
 {
-        while(1){
-            while((int)arg!=start->numer)
-               pthread_cond_wait(&zmienna,&most);
+        while(exitflag==0){
+                //Zablokowanie mostu by bezpiecznie sprawdzić kolejke i ewentualny przejazd.
+                pthread_mutex_lock(&most);
+                while((int)arg!=start->numer)                   //Gdy Numer samochodu nie jest pierwszy w kolejce.
+                        pthread_cond_wait(&zmienna,&most);      //Uśpienie i odblokowanie mostu by inne samochody mogły z niego skorzystać.
                 
                 if(temp[(long)arg] == 0){
                     ACount--;
-                    printf("%d | %d [>> %d >>] %d | %d ",MACount, ACount, (long)arg , BCount, MBCount);
+                    printf("A - %d | %d [>> %d >>] %d | %d - B",MACount, ACount, (long)arg , BCount, MBCount);
                     if(debug==1) Wypisz();
-                    
                     temp[(long)arg]=1;
                 }
                 else{
                     BCount--;
-                    printf("%d | %d [<< %d <<] %d | %d ",MACount, ACount, (long)arg , BCount, MBCount);
-
+                    printf("A - %d | %d [<< %d <<] %d | %d - B",MACount, ACount, (long)arg , BCount, MBCount);
                     if(debug==1) Wypisz();
                     temp[(long)arg]=0;  
                 }
-                FirstOut();
-
                 if(temp[(int)arg]==0)
                     MACount++;
                 else
@@ -127,15 +135,21 @@ void *Crossing(void *arg)
 
                 if(debug==0) printf("\n");
                 
-                int r = rand()%100000+1;
-                pthread_cond_signal(&zmienna);
-                usleep(r);
+                pthread_mutex_unlock(&most);
+                
+                //Zablokowanie kolejki aby można było bezpiecznie usunąć samochód.
+                pthread_mutex_lock(&mutexkolejkiOut); 
+                FirstOut();     //Usuniecie pierwszego samochodu z kolejki
+                pthread_cond_broadcast(&zmienna);       //Powiadomienie wątków że stan kolejki się zmienił.
+                int r = rand()%10000+1;
+                pthread_mutex_unlock(&mutexkolejkiOut); //Odblokowanie kolejki
+                
+                usleep(r);      //Symulowanie jazdy samochodu po mieście.
 
 
-                while(zajeta!=0)
-                        pthread_cond_wait(&zmiennakolejki,&mutex);
-                zajeta=1;
-                FirstIn((int)arg);
+                //Zablokowanie kolejki aby można było bezpiecznie dodać samochód.
+                pthread_mutex_lock(&mutexkolejki);
+                FirstIn((int)arg);      //Dodanie do kolejki ID obecnego wątku.
                 if(temp[(int)arg]==0){
                     ACount++;
                     MACount--;
@@ -144,33 +158,39 @@ void *Crossing(void *arg)
                     BCount++;
                     MBCount--;
                 }
-                zajeta=0;
-                pthread_cond_signal(&zmiennakolejki);
-                
+                pthread_cond_broadcast(&zmienna);       //Wysłanie sygnału wątkom.
+                pthread_mutex_unlock(&mutexkolejki);    //Odblokowanie  kolejki.
             
 
         }
-
         pthread_exit((void*) 0);
 }
 
 int main (int argc, char *argv[])
 {
-        void *status;
-        pthread_mutex_init(&mutex, NULL);
-        pthread_mutex_init(&mutkolejki, NULL);
+        signal(SIGINT, sig_handler); 
+        void* status;
+        char *eptr;
+        //Inicializacje potrzebnych mutexów.
+        pthread_mutex_init(&most, NULL);
+        pthread_mutex_init(&mutexkolejki, NULL);
+        pthread_mutex_init(&mutexkolejkiOut, NULL);
         srand(time(NULL)); 
 
+        //Testowanie poprawności wprowadzonych argumentów
         switch(argc){
             case 2: 
-            if(atoi(argv[1])==0)
-            nn = atoi(argv[1]); 
+                nn = strtol(argv[1], &eptr, 10); 
+                if (nn==0)
+                opterr = 1;
             break;
  
             case 3: 
-            nn = atoi(argv[1]); 
-            if(strcmp(argv[2],"-debug")==0)
-                debug=1;;
+                nn = strtol(argv[1], &eptr, 10); 
+                if (nn==0)
+                opterr = 1; 
+                if(strcmp(argv[2],"-debug")==0)
+                        debug=1;;
             break;
             default:
             opterr =1;
@@ -178,30 +198,39 @@ int main (int argc, char *argv[])
                 
             break;
         }
+        //Sprawdzenie czy poprawnie wprowadzono argumenty.
         if(opterr==0){
             temp = (int*) malloc(nn*sizeof(int));
             myThread = (pthread_t*) malloc(nn*sizeof(pthread_t));
+            //Losowanie kierunku przejazdu dla samochodu w kolejce.
             for(int i=0; i<nn;i++){
-            FirstIn(i);
-            int r = rand()%100;
-            if(r<55){ 
-                temp[i]=0;
-                ACount++;
+                FirstIn(i);
+                int r = rand()%100;
+                if(r<55){ 
+                        temp[i]=0;
+                        ACount++;
+                }
+                else{
+                        temp[i]=1;
+                        BCount++;
+                }
             }
-            else{
-                temp[i]=1;
-                BCount++;
-            }
-            }
-            
-            for(long i=0; i < nn; i++)
+            //Tworzenie wątków które bedą przekraczać most.
+        for(long i=0; i < nn; i++)
             pthread_create(&myThread[i], NULL, Crossing, (void *)i);
 
-        while(1);
+        //Oczekiwanie na zakończenie wszystkich wątków.
+        for(long i = 0; i<nn; i++)
+                pthread_join(myThread[i], &status);
 
+        //Kasowanie List.
         freeList(&start);
+        free(myThread);
+        free(temp);
         }
-        pthread_mutex_destroy(&mutkolejki);
-        pthread_mutex_destroy(&mutex); 
+        else printf("Blad przy wpisywaniu liczby\n");
+        pthread_mutex_destroy(&mutexkolejkiOut);
+        pthread_mutex_destroy(&mutexkolejki);
+        pthread_mutex_destroy(&most); 
         pthread_exit(NULL);
 }
