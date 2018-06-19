@@ -58,7 +58,7 @@ void Wypisz(){
     Kolejka * p;
     p =start;
     if(p!=NULL){
-        printf("//");
+        printf(" // ");
           while(p)   // dopóki lista nie jest pusta
         { 
             printf("%d ",p->numer);
@@ -116,6 +116,7 @@ void *Crossing(void *arg)
                 while((int)arg!=start->numer)                   //Gdy Numer samochodu nie jest pierwszy w kolejce.
                         pthread_cond_wait(&zmienna,&most);      //Uśpienie i odblokowanie mostu by inne samochody mogły z niego skorzystać.
                 
+                //Sparawdzenie w tymczasowej tablicy gdzie samochód sie znajduje.(Po której stronie mostu)
                 if(temp[(long)arg] == 0){
                     ACount--;
                     printf("A - %d | %d [>> %d >>] %d | %d - B",MACount, ACount, (long)arg , BCount, MBCount);
@@ -171,10 +172,15 @@ int main (int argc, char *argv[])
         signal(SIGINT, sig_handler); 
         void* status;
         char *eptr;
+        int reterror;
         //Inicializacje potrzebnych mutexów.
-        pthread_mutex_init(&most, NULL);
-        pthread_mutex_init(&mutexkolejki, NULL);
-        pthread_mutex_init(&mutexkolejkiOut, NULL);
+        reterror = pthread_mutex_init(&most, NULL);
+        reterror = pthread_mutex_init(&mutexkolejki, NULL);
+        reterror = pthread_mutex_init(&mutexkolejkiOut, NULL);
+        if (reterror != 0){
+                printf("Blad przy inicjacji mutexow");
+                return 1;
+        }
         srand(time(NULL)); 
 
         //Testowanie poprawności wprowadzonych argumentów
@@ -216,8 +222,11 @@ int main (int argc, char *argv[])
                 }
             }
             //Tworzenie wątków które bedą przekraczać most.
-        for(long i=0; i < nn; i++)
-            pthread_create(&myThread[i], NULL, Crossing, (void *)i);
+        for(long i=0; i < nn; i++){
+           reterror = pthread_create(&myThread[i], NULL, Crossing, (void *)i);
+                if(reterror!=0)
+                        printf("Nie mozna bylo utworzyc watku numer %d ", i);
+        }
 
         //Oczekiwanie na zakończenie wszystkich wątków.
         for(long i = 0; i<nn; i++)
