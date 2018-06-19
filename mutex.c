@@ -24,34 +24,26 @@ void sig_handler(int signo)
 
 pthread_t *myThread;
 pthread_mutex_t mutex;
-sem_t smost,smost2,skolejkiOut,skolejkiIn;      //Deklaracja oraz inicjacja zmiennej warunkowej
+sem_t smost,skolejkiIn;      //Deklaracja oraz inicjacja zmiennej warunkowej
 int nn; //Licznik wątków / samochodów
 int ACount = 0, BCount = 0, MACount = 0, MBCount = 0;   //Liczniki kolejek i miast
-int *temp;
+int *temp;  //Tymczasowa tablica przechowujaca polozenie samochodu.
 int opterr = 0; //Kontrola błędów w argumentach
 int debug = 0;  //Flaga argumentu -debug.
 
-//Wypisanie zawartości kolejki
-void Wypisz(){
- 
-    //printf("%d", smost->wait_list);
-}
 void *Crossing(void *arg)
 {
-        while(exitflag==0){
-                //Zablokowanie mostu by bezpiecznie sprawdzić kolejke i ewentualny przejazd.
+        while(exitflag==0){//Zakonz watki sygnalem SIGINT
+                //Zablokowanie mostu by bezpiecznie przejechac.
                 sem_wait(&smost);
                 if(temp[(long)arg] == 0){
                     ACount--;
                     printf("A - %d | %d [>> %d >>] %d | %d - B",MACount, ACount, (long)arg , BCount, MBCount);
-                    if(debug==1) Wypisz();
-                    temp[(long)arg]=1;
-                    
+                    temp[(long)arg]=1;  
                 }
                 else{
                     BCount--;
                     printf("A - %d | %d [<< %d <<] %d | %d - B",MACount, ACount, (long)arg , BCount, MBCount);
-                    if(debug==1) Wypisz();
                     temp[(long)arg]=0;  
                 }
                 if(temp[(int)arg]==0)
@@ -60,10 +52,9 @@ void *Crossing(void *arg)
                     MBCount++;
 
                 if(debug==0) printf("\n");
-                //int r = rand()%1000+1;
-                sem_post(&smost);
-                               
-                //usleep(r);      //Symulowanie jazdy samochodu po mieście.
+                sem_post(&smost);//Zwolnienie mostu.
+
+                //Okres gdy samochod jest w miescie.
                 //Samochod wyjezdza z miasta i staje w kolejce.
                 sem_wait(&skolejkiIn);
                 if(temp[(int)arg]==0){
@@ -75,6 +66,7 @@ void *Crossing(void *arg)
                     MBCount--;
                 }
                 sem_post(&skolejkiIn);
+                //Zwolnienie semafora kolejki aby inne samochody mogly zmieniac liczniki
         }
         pthread_exit((void*) 0);
 }
@@ -85,12 +77,9 @@ int main (int argc, char *argv[])
         void* status;
         char *eptr;
         int reterror;
-       // pthread_attr_t attr;
-        //pthread_attr_init(&attr);
-        //pthread_attr_setschedpolicy(&attr, SCHED_FIFO);
-        //Inicializacje potrzebnych semaforów.
+
         reterror = sem_init(&smost,0,1);
-        reterror = sem_init(&skolejkiIn,0,1);
+        reterror = sem_init(&skolejkiIn,0,1);   //Inicjalizacja semaforow
 
         if (reterror != 0){
             printf("Blad przy inicjacji mutexow/semaforow");
@@ -106,13 +95,6 @@ int main (int argc, char *argv[])
                 opterr = 1;
             break;
  
-            case 3: 
-                nn = strtol(argv[1], &eptr, 10); 
-                if (nn==0)
-                opterr = 1; 
-                if(strcmp(argv[2],"-debug")==0)
-                        debug=1;;
-            break;
             default:
             opterr =1;
                 printf("Blad przy wpisywaniu argumentow\n;"); 
@@ -121,7 +103,9 @@ int main (int argc, char *argv[])
         }
         //Sprawdzenie czy poprawnie wprowadzono argumenty.
         if(opterr==0){
+            //Lokowanie tymczasowej tablicy
             temp = (int*) malloc(nn*sizeof(int));
+            //Tworzenie listy watkow.
             myThread = (pthread_t*) malloc(nn*sizeof(pthread_t));
             //Losowanie kierunku przejazdu dla samochodu w kolejce.
             for(int i=0; i<nn;i++){
@@ -150,6 +134,7 @@ int main (int argc, char *argv[])
         free(temp);
         }
         else printf("Blad przy wpisywaniu liczby\n");
+        //Czyszczenie semaforow.
         sem_destroy(&smost);
         sem_destroy(&skolejkiIn);
         pthread_exit(NULL);

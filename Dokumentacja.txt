@@ -1,6 +1,7 @@
 Dokumentacja Projektu 
 Wąski Most.
 Werjsa projektu
+- Wykorzystujac semafory/mutexy.
 - Wykorzystując zmienne warunkowe
 
 Autorzy:
@@ -8,73 +9,27 @@ Mateusz Bednarski
 Kamil Budka
 
 Spis plików:
+Makefile
+mutex.c
 zmienne.c
 
 Uruchomienie:
 Znajdując się w katalogu z projektem należy uruchomic makefile komendą:
 -
-gcc -pthread -o zmienne zmienne.c
+make
 -
-Aby uruchomić demona należy wpisać:
+Aby uruchomić wybrana wersje programu należy wpisać:
 -
+./mutexy N
 ./zmiene N [-debug]
 -
 Wymagane:
 N = 	Liczba procesów/samochodów.
 Opcjonalne:
--debug	=  Wypisanie kolejki do mostu.
+-debug	=  Wypisanie kolejki do mostu w wersji wykorzystującej zmienne warunkowe.
 
-Kod programu wykorzystujący mechanizmy synchronizacji:
+W projekcie 
 
-void *Crossing(void *arg)
-{
-        while(exitflag==0){
-                //Zablokowanie mostu by bezpiecznie sprawdzić kolejke i ewentualny przejazd.
-                pthread_mutex_lock(&most);
-                while((int)arg!=start->numer)                   //Gdy Numer samochodu nie jest pierwszy w kolejce.
-                        pthread_cond_wait(&zmienna,&most);      //Uśpienie i odblokowanie mostu by inne samochody mogły z niego skorzystać.
-                
-                //Sparawdzenie w tymczasowej tablicy gdzie samochód sie znajduje.(Po której stronie mostu)
-                if(temp[(long)arg] == 0){
-		////////////////////////////
-		Zarządzanie licznikami kolejek i miast
-		////////////////////////////
-                }
-                if(temp[(int)arg]==0)
-                    MACount++;
-                else
-                    MBCount++;
-
-                if(debug==0) printf("\n");
-                
-		//Odblokowanie mostu aby inne samochody mogły przejechać.
-                pthread_mutex_unlock(&most);
-                
-                //Zablokowanie kolejki aby można było bezpiecznie usunąć samochód.
-                pthread_mutex_lock(&mutexkolejkiOut); 
-                FirstOut();     //Usuniecie pierwszego samochodu z kolejki
-                pthread_cond_broadcast(&zmienna);       //Powiadomienie wątków że stan kolejki się zmienił.
-                int r = rand()%10000+1;
-                pthread_mutex_unlock(&mutexkolejkiOut); //Odblokowanie kolejki
-                
-                usleep(r);      //Symulowanie jazdy samochodu po mieście.
-
-                //Zablokowanie kolejki aby można było bezpiecznie dodać samochód.
-                pthread_mutex_lock(&mutexkolejki);
-                FirstIn((int)arg);      //Dodanie do kolejki ID obecnego wątku.
-                if(temp[(int)arg]==0){
-                    ACount++;
-                    MACount--;
-                }
-                else{
-                    BCount++;
-                    MBCount--;
-                }
-                pthread_cond_broadcast(&zmienna);       //Wysłanie sygnału wątkom.
-                pthread_mutex_unlock(&mutexkolejki);    //Odblokowanie  kolejki.
-        }
-        pthread_exit((void*) 0);
-}
 
 
 
