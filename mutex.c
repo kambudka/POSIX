@@ -41,7 +41,6 @@ void *Crossing(void *arg)
         while(exitflag==0){
                 //Zablokowanie mostu by bezpiecznie sprawdzić kolejke i ewentualny przejazd.
                 sem_wait(&smost);
-                sem_wait(&smost2);
                 if(temp[(long)arg] == 0){
                     ACount--;
                     printf("A - %d | %d [>> %d >>] %d | %d - B",MACount, ACount, (long)arg , BCount, MBCount);
@@ -61,19 +60,11 @@ void *Crossing(void *arg)
                     MBCount++;
 
                 if(debug==0) printf("\n");
-                
+                //int r = rand()%1000+1;
                 sem_post(&smost);
-                sem_post(&smost2);
-                
-                //Zablokowanie kolejki aby można było bezpiecznie usunąć samochód.
-                 
-                int r = rand()%1000+1;
-                 //Odblokowanie kolejki
-                
+                               
                 //usleep(r);      //Symulowanie jazdy samochodu po mieście.
-
-
-                //Zablokowanie kolejki aby można było bezpiecznie dodać samochód.
+                //Samochod wyjezdza z miasta i staje w kolejce.
                 sem_wait(&skolejkiIn);
                 if(temp[(int)arg]==0){
                     ACount++;
@@ -84,8 +75,6 @@ void *Crossing(void *arg)
                     MBCount--;
                 }
                 sem_post(&skolejkiIn);
-            
-
         }
         pthread_exit((void*) 0);
 }
@@ -95,19 +84,18 @@ int main (int argc, char *argv[])
         signal(SIGINT, sig_handler); 
         void* status;
         char *eptr;
-        
-        pthread_attr_t attr;
-        int policy = 0;
-        int max_prio_for_policy = 0;
-        pthread_attr_init(&attr);
-        pthread_attr_setschedpolicy(&attr, SCHED_FIFO);
-       // pthread_attr_setschedparam(&attr, 2);
+        int reterror;
+       // pthread_attr_t attr;
+        //pthread_attr_init(&attr);
+        //pthread_attr_setschedpolicy(&attr, SCHED_FIFO);
         //Inicializacje potrzebnych semaforów.
-        sem_init(&smost,0,1);
-        sem_init(&smost2,0,1);
-        sem_init(&skolejkiIn,0,1);
-        sem_init(&skolejkiOut,0,1);
-        pthread_mutex_init(&mutex,NULL);
+        reterror = sem_init(&smost,0,1);
+        reterror = sem_init(&skolejkiIn,0,1);
+
+        if (reterror != 0){
+            printf("Blad przy inicjacji mutexow/semaforow");
+            return 1;
+        }
         srand(time(NULL)); 
 
         //Testowanie poprawności wprowadzonych argumentów
@@ -148,9 +136,11 @@ int main (int argc, char *argv[])
                 }
             }
             //Tworzenie wątków które bedą przekraczać most.
-        for(long i=0; i < nn; i++)
-            pthread_create(&myThread[i], &attr, Crossing, (void *)i);
-
+        for(long i=0; i < nn; i++){
+           reterror = pthread_create(&myThread[i], NULL, Crossing, (void *)i);
+                if(reterror!=0)
+                        printf("Nie mozna bylo utworzyc watku numer %d ", i);
+        }
         //Oczekiwanie na zakończenie wszystkich wątków.
         for(long i = 0; i<nn; i++)
                 pthread_join(myThread[i], &status);
@@ -162,6 +152,5 @@ int main (int argc, char *argv[])
         else printf("Blad przy wpisywaniu liczby\n");
         sem_destroy(&smost);
         sem_destroy(&skolejkiIn);
-        sem_destroy(&skolejkiOut);
         pthread_exit(NULL);
 }
